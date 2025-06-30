@@ -1,0 +1,8 @@
+[package]
+name = "planetary"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+wgpu = "25.0.2"
+winit = "0.30.11"
