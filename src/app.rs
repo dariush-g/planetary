@@ -1,28 +1,44 @@
 use std::sync::Arc;
 
+use glam::Vec2;
 use winit::{
     application::ApplicationHandler,
-    event::WindowEvent,
-    window::{Window, WindowAttributes},
+    event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent},
+    event_loop::ActiveEventLoop,
+    window::{Window, WindowAttributes, WindowId},
 };
 
-#[derive(Debug, Clone, Default)]
+use crate::{camera::OrbitCamera, state::State};
+
+#[derive(Debug, Default)]
 pub struct App {
     window: Option<Arc<Window>>,
+    state: Option<State>,
+    mouse_pressed: bool,
+    last_cursor: Option<Vec2>,
+    orbit_camera: OrbitCamera,
 }
 
 impl ApplicationHandler for App {
-    fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
-        let window_attributes = WindowAttributes::default();
+    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        let window = event_loop
+            .create_window(Window::default_attributes().with_title("Planet Renderer"))
+            .unwrap();
 
-        self.window = match event_loop.create_window(window_attributes) {
-            Ok(window) => Some(window.into()),
-            Err(err) => {
-                eprintln!("Error creating window: {err}");
-                event_loop.exit();
-                return;
-            }
-        };
+        self.window = Some(window.into());
+
+        let cloned_window = self.window.clone().unwrap();
+
+        let state = pollster::block_on(State::new(cloned_window));
+
+        self.state = Some(state.into());
+        self.last_cursor = None;
+        self.mouse_pressed = false;
+        self.orbit_camera = OrbitCamera::new();
+
+        if let Some(window) = &self.window {
+            window.request_redraw();
+        }
     }
 
     fn window_event(
@@ -34,37 +50,52 @@ impl ApplicationHandler for App {
         println!("{event:?}");
         match event {
             WindowEvent::CursorMoved { position, .. } => {
-                println!("{:?}", position)
+                if self.mouse_pressed {
+                    let pos = Vec2::new(position.x as f32, position.y as f32);
+                    if let Some(last) = self.last_cursor {
+                        let delta = pos - last;
+
+                        if let Some(state) = &mut self.state {
+                            state.orbit_camera.rotate(delta);
+                        }
+                    }
+                    self.last_cursor = Some(pos);
+                }
+            }
+
+            WindowEvent::MouseInput {
+                state,
+                button: MouseButton::Left,
+                ..
+            } => {
+                self.mouse_pressed = state == ElementState::Pressed;
+                if !self.mouse_pressed {
+                    self.last_cursor = None;
+                }
             }
             WindowEvent::CloseRequested => {
                 println!("Close was requested; stopping");
                 event_loop.exit();
             }
-            WindowEvent::Resized(_) => {
-                self.window
-                    .as_ref()
-                    .expect("resize event without a window")
-                    .request_redraw();
+            WindowEvent::Resized(size) => {
+                if let Some(state) = &mut self.state {
+                    state.resize(size);
+                }
             }
             WindowEvent::RedrawRequested => {
-                // Redraw the application.
-                //
-                // It's preferable for applications that do not render continuously to render in
-                // this event rather than in AboutToWait, since rendering in here allows
-                // the program to gracefully handle redraws requested by the OS.
+                if let Some(state) = &mut self.state {
+                    state.update_camera();
+                    state.render().unwrap();
+                }
+                self.window.clone().unwrap().request_redraw();
+            }
+            WindowEvent::MouseWheel { delta, .. } => {
+                let scroll = match delta {
+                    MouseScrollDelta::LineDelta(_, y) => y,
+                    MouseScrollDelta::PixelDelta(p) => p.y as f32,
+                };
 
-                let window = self
-                    .window
-                    .as_ref()
-                    .expect("redraw request without a window");
-
-                // Notify that you're about to draw.
-                window.pre_present_notify();
-
-                // Draw.
-
-                // For contiguous redraw loop you can request a redraw from here.
-                // window.request_redraw();
+                self.orbit_camera.handle_scroll(scroll);
             }
             _ => (),
         }
