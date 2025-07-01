@@ -5,10 +5,14 @@ use winit::{
     application::ApplicationHandler,
     event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent},
     event_loop::ActiveEventLoop,
+    keyboard::{KeyCode, PhysicalKey},
     window::{Window, WindowAttributes, WindowId},
 };
 
-use crate::{camera::OrbitCamera, state::State};
+use crate::{
+    camera::{Camera, OrbitCamera},
+    state::State,
+};
 
 #[derive(Debug, Default)]
 pub struct App {
@@ -53,6 +57,15 @@ impl ApplicationHandler for App {
     ) {
         println!("{event:?}");
         match event {
+            WindowEvent::KeyboardInput { event, .. } => match event.physical_key {
+                PhysicalKey::Code(KeyCode::KeyR) => {
+                    if let Some(state) = &mut self.state {
+                        state.orbit_camera = OrbitCamera::new();
+                        //state.camera = Camera::default();
+                    }
+                }
+                _ => {}
+            },
             WindowEvent::CursorMoved { position, .. } => {
                 let new_pos = Vec2::new(position.x as f32, position.y as f32);
 
@@ -67,7 +80,7 @@ impl ApplicationHandler for App {
                     if let Some(state) = &mut self.state {
                         match (self.left_mouse_pressed, self.right_mouse_pressed) {
                             (true, false) => {
-                                state.orbit_camera.rotate(delta);
+                                state.orbit_camera.rotate(-delta);
                                 state.update_camera();
                             }
                             (false, true) => {
