@@ -79,6 +79,8 @@ impl ApplicationHandler for App {
             }
             WindowEvent::Resized(size) => {
                 if let Some(state) = &mut self.state {
+                    //state.depth_texture = State::create_depth_texture(&state.device, &state.config);
+
                     state.resize(size);
                 }
             }

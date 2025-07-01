@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use bytemuck::{Pod, Zeroable};
-use glam::Vec3;
+use glam::{Mat4, Vec3};
 use wgpu::{util::DeviceExt, *};
 use winit::{dpi::PhysicalSize, window::Window};
 
@@ -9,6 +9,12 @@ use crate::{
     camera::{Camera, OrbitCamera},
     mesh::{generate_uv_sphere, Vertex},
 };
+
+const MAX_SPHERES: usize = 100;
+
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable, Debug)]
+struct ModelMatrix([[f32; 4]; 4]);
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -19,9 +25,9 @@ struct CameraUniform {
 #[derive(Debug)]
 pub struct State {
     surface: Arc<Surface<'static>>,
-    device: Device,
+    pub device: Device,
     queue: Queue,
-    config: SurfaceConfiguration,
+    pub config: SurfaceConfiguration,
     surface_format: TextureFormat,
     size: PhysicalSize<u32>,
     vertex_buffer: Buffer,
@@ -32,6 +38,10 @@ pub struct State {
     camera: Camera,
     camera_buffer: Buffer,
     pub orbit_camera: OrbitCamera,
+    model_matrices: Vec<ModelMatrix>,
+    model_buffer: Buffer,
+    model_bind_group: BindGroup,
+    pub depth_texture: TextureView,
 }
 
 impl State {
@@ -140,9 +150,46 @@ impl State {
             label: Some("Camera Bind Group"),
         });
 
+        let model_matrices: Vec<ModelMatrix> = vec![
+            ModelMatrix(Mat4::from_translation(Vec3::new(0.0, 0.0, 0.0)).to_cols_array_2d()),
+            ModelMatrix(Mat4::from_translation(Vec3::new(3.0, 0.0, 0.0)).to_cols_array_2d()),
+            ModelMatrix(Mat4::from_translation(Vec3::new(-3.0, 0.0, 0.0)).to_cols_array_2d()),
+            // ... more
+        ];
+
+        let model_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Model Matrices"),
+            contents: bytemuck::cast_slice(&model_matrices),
+            usage: wgpu::BufferUsages::STORAGE,
+        });
+
+        let model_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Model Bind Group Layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
+
+        let model_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &model_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: model_buffer.as_entire_binding(),
+            }],
+            label: Some("Model Bind Group"),
+        });
+
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Pipeline Layout"),
-            bind_group_layouts: &[&camera_bind_group_layout],
+            bind_group_layouts: &[&camera_bind_group_layout, &model_bind_group_layout],
             push_constant_ranges: &[],
         });
 
@@ -171,11 +218,19 @@ impl State {
                 front_face: wgpu::FrontFace::Ccw,
                 ..Default::default()
             },
-            depth_stencil: None,
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: wgpu::TextureFormat::Depth32Float,
+                depth_write_enabled: true,
+                depth_compare: wgpu::CompareFunction::Less,
+                stencil: wgpu::StencilState::default(),
+                bias: wgpu::DepthBiasState::default(),
+            }),
             multisample: wgpu::MultisampleState::default(),
             multiview: None,
             cache: None,
         });
+
+        let depth_texture = Self::create_depth_texture(&device, &config);
 
         Self {
             surface,
@@ -192,7 +247,36 @@ impl State {
             camera_buffer,
             camera,
             orbit_camera,
+            model_buffer,
+            model_matrices,
+            model_bind_group,
+            depth_texture,
         }
+    }
+
+    pub fn create_depth_texture(
+        device: &wgpu::Device,
+        config: &wgpu::SurfaceConfiguration,
+    ) -> wgpu::TextureView {
+        let size = wgpu::Extent3d {
+            width: config.width,
+            height: config.height,
+            depth_or_array_layers: 1,
+        };
+
+        let desc = wgpu::TextureDescriptor {
+            label: Some("Depth Texture"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Depth32Float,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        };
+
+        let texture = device.create_texture(&desc);
+        texture.create_view(&wgpu::TextureViewDescriptor::default())
     }
 
     pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
@@ -201,10 +285,10 @@ impl State {
             self.config.height = new_size.height;
             self.surface.configure(&self.device, &self.config);
 
-            // ⬅️ Recalculate the aspect ratio
+            self.depth_texture = Self::create_depth_texture(&self.device, &self.config);
+
             self.camera.aspect = self.config.width as f32 / self.config.height as f32;
 
-            // ⬅️ Update camera buffer
             let view_proj = self.camera.build_view_projection_matrix();
             self.queue.write_buffer(
                 &self.camera_buffer,
@@ -227,26 +311,41 @@ impl State {
             });
 
         {
+            let color_attachment = wgpu::RenderPassColorAttachment {
+                view: &view,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                    store: StoreOp::Store,
+                },
+            };
+
+            let depth_attachment = wgpu::RenderPassDepthStencilAttachment {
+                view: &self.depth_texture,
+                depth_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(1.0),
+                    store: StoreOp::Store,
+                }),
+                stencil_ops: None,
+            };
+
             let mut rpass = encoder.begin_render_pass(&RenderPassDescriptor {
                 label: Some("Planet Render Pass"),
-                color_attachments: &[Some(RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    ops: Operations {
-                        load: LoadOp::Clear(Color::BLACK),
-                        store: StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
+                color_attachments: &[Some(color_attachment)],
+                depth_stencil_attachment: Some(depth_attachment),
                 ..Default::default()
             });
 
             rpass.set_bind_group(0, &self.camera_bind_group, &[]);
+            rpass.set_bind_group(1, &self.model_bind_group, &[]);
 
             rpass.set_pipeline(&self.render_pipeline);
+
+            //for i in 0..self.model_matrices.len() as u32 {
             rpass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             rpass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-            rpass.draw_indexed(0..self.index_count, 0, 0..1);
+            rpass.draw_indexed(0..self.index_count, 0, 0..self.model_matrices.len() as u32);
+            //}
         }
 
         self.queue.submit(Some(encoder.finish()));
