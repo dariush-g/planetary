@@ -35,7 +35,7 @@ pub struct State {
     index_count: u32,
     render_pipeline: RenderPipeline,
     camera_bind_group: BindGroup,
-    camera: Camera,
+    pub(crate) camera: Camera,
     camera_buffer: Buffer,
     pub orbit_camera: OrbitCamera,
     model_matrices: Vec<ModelMatrix>,
@@ -355,7 +355,8 @@ impl State {
     }
 
     pub fn update_camera(&mut self) {
-        self.camera.eye = self.orbit_camera.eye();
+        let target_eye = self.orbit_camera.eye();
+        self.camera.eye = self.camera.eye.lerp(target_eye, 0.05); // 20% interpolation
 
         let view_proj = self.camera.build_view_projection_matrix();
         self.queue.write_buffer(

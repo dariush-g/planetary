@@ -14,9 +14,12 @@ use crate::{camera::OrbitCamera, state::State};
 pub struct App {
     window: Option<Arc<Window>>,
     state: Option<State>,
-    mouse_pressed: bool,
+
+    left_mouse_pressed: bool,
+    right_mouse_pressed: bool,
+
     last_cursor: Option<Vec2>,
-    orbit_camera: OrbitCamera,
+    //orbit_camera: OrbitCamera,
 }
 
 impl ApplicationHandler for App {
@@ -33,8 +36,9 @@ impl ApplicationHandler for App {
 
         self.state = Some(state.into());
         self.last_cursor = None;
-        self.mouse_pressed = false;
-        self.orbit_camera = OrbitCamera::new();
+        self.left_mouse_pressed = false;
+        self.right_mouse_pressed = false;
+        //self.orbit_camera = OrbitCamera::new();
 
         if let Some(window) = &self.window {
             window.request_redraw();
@@ -50,27 +54,59 @@ impl ApplicationHandler for App {
         println!("{event:?}");
         match event {
             WindowEvent::CursorMoved { position, .. } => {
-                if self.mouse_pressed {
-                    let pos = Vec2::new(position.x as f32, position.y as f32);
-                    if let Some(last) = self.last_cursor {
-                        let delta = pos - last;
+                let new_pos = Vec2::new(position.x as f32, position.y as f32);
 
-                        if let Some(state) = &mut self.state {
-                            state.orbit_camera.rotate(delta);
+                if let Some(old_pos) = self.last_cursor {
+                    let delta = new_pos - old_pos;
+
+                    if delta.length() < 0.5 {
+                        // Ignore movements smaller than 0.5 pixels
+                        return;
+                    }
+
+                    if let Some(state) = &mut self.state {
+                        match (self.left_mouse_pressed, self.right_mouse_pressed) {
+                            (true, false) => {
+                                state.orbit_camera.rotate(delta);
+                                state.update_camera();
+                            }
+                            (false, true) => {
+                                state.orbit_camera.pan(delta);
+                                state.orbit_camera.apply_to_camera(&mut state.camera);
+                                state.update_camera();
+                            }
+                            _ => {}
                         }
                     }
-                    self.last_cursor = Some(pos);
                 }
-            }
 
-            WindowEvent::MouseInput {
-                state,
-                button: MouseButton::Left,
-                ..
-            } => {
-                self.mouse_pressed = state == ElementState::Pressed;
-                if !self.mouse_pressed {
-                    self.last_cursor = None;
+                self.last_cursor = Some(new_pos);
+            }
+            WindowEvent::MouseInput { state, button, .. } => {
+                let pressed = state == ElementState::Pressed;
+
+                match button {
+                    MouseButton::Left => {
+                        self.left_mouse_pressed = pressed;
+                        if pressed {
+                            // When left button is pressed, ensure right button is not pressed
+                            self.right_mouse_pressed = false;
+                        }
+                        if !pressed {
+                            self.last_cursor = None;
+                        }
+                    }
+                    MouseButton::Right => {
+                        self.right_mouse_pressed = pressed;
+                        if pressed {
+                            // When right button is pressed, ensure left button is not pressed
+                            self.left_mouse_pressed = false;
+                        }
+                        if !pressed {
+                            self.last_cursor = None;
+                        }
+                    }
+                    _ => {}
                 }
             }
             WindowEvent::CloseRequested => {
@@ -97,8 +133,11 @@ impl ApplicationHandler for App {
                     MouseScrollDelta::PixelDelta(p) => p.y as f32,
                 };
 
-                self.orbit_camera.handle_scroll(scroll);
+                if let Some(state) = &mut self.state {
+                    state.orbit_camera.handle_scroll(scroll);
+                }
             }
+
             _ => (),
         }
     }
