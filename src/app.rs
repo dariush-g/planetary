@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use glam::Vec2;
+use glam::{Vec2, Vec3};
 use winit::{
     application::ApplicationHandler,
     event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent},
@@ -61,7 +61,7 @@ impl ApplicationHandler for App {
                 PhysicalKey::Code(KeyCode::KeyR) => {
                     if let Some(state) = &mut self.state {
                         state.orbit_camera = OrbitCamera::new();
-                        //state.camera = Camera::default();
+                        state.camera.target = Vec3::ZERO;
                     }
                 }
                 _ => {}
@@ -80,7 +80,7 @@ impl ApplicationHandler for App {
                     if let Some(state) = &mut self.state {
                         match (self.left_mouse_pressed, self.right_mouse_pressed) {
                             (true, false) => {
-                                state.orbit_camera.rotate(-delta);
+                                state.orbit_camera.rotate(delta * Vec2::new(-1., 1.));
                                 state.update_camera();
                             }
                             (false, true) => {
