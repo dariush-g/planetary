@@ -11,8 +11,12 @@ use winit::{
 
 use crate::{
     camera::{Camera, OrbitCamera},
+    classes::CelestialBody,
     state::State,
 };
+pub struct CelestialBodies {
+    bodies: Vec<Box<dyn CelestialBody>>,
+}
 
 #[derive(Debug, Default)]
 pub struct App {

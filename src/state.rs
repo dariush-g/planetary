@@ -16,13 +16,14 @@ const MAX_SPHERES: usize = 100;
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable, Debug)]
 struct InstanceData {
     model: ModelMatrix,
+    normal_matrix: ModelMatrix,
     color: [f32; 3],
     _pad: f32,
 }
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable, Debug)]
-struct ModelMatrix([[f32; 4]; 4]);
+pub struct ModelMatrix([[f32; 4]; 4]);
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -64,6 +65,17 @@ pub struct State {
     lights: Vec<LightSource>,
     light_bind_group: BindGroup,
     light_buffer: Buffer,
+    // g_buffer: GBufferTextures,
+    // lighting_pipeline: ComputePipeline,
+    // lighting_bind_group: BindGroup,
+}
+
+#[derive(Debug, Clone)]
+struct GBufferTextures {
+    albedo: TextureView,
+    normal: TextureView,
+    depth: TextureView,
+    output: TextureView,
 }
 
 impl State {
@@ -108,7 +120,7 @@ impl State {
 
         surface.configure(&device, &config);
 
-        let (vertices, indices) = generate_uv_sphere(64, 64);
+        let (vertices, indices) = generate_uv_sphere(128, 128, 2.);
 
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Vertex Buffer"),
@@ -175,16 +187,22 @@ impl State {
         });
 
         let matrices: Vec<ModelMatrix> = vec![
-            ModelMatrix(Mat4::from_translation(Vec3::new(0.0, 0.0, 0.0)).to_cols_array_2d()),
+            ModelMatrix(Mat4::from_translation(Vec3::new(0.0, 7.5, 0.0)).to_cols_array_2d()),
             ModelMatrix(Mat4::from_translation(Vec3::new(3.0, 0.0, 0.0)).to_cols_array_2d()),
-            ModelMatrix(Mat4::from_translation(Vec3::new(-3.0, 0.0, 0.0)).to_cols_array_2d()),
-            ModelMatrix(Mat4::from_translation(Vec3::new(0.0, 4.0, 0.0)).to_cols_array_2d()),
+            ModelMatrix(Mat4::from_translation(Vec3::new(-3.0, -1.0, 0.0)).to_cols_array_2d()),
+            // ModelMatrix(Mat4::from_translation(Vec3::new(0.0, 4.0, 0.0)).to_cols_array_2d()),
         ];
 
         let model_matrices: Vec<InstanceData> = (0..matrices.len())
             .map(|i| {
                 InstanceData {
                     model: matrices[i],
+                    normal_matrix: ModelMatrix(
+                        Mat4::from_cols_array_2d(&matrices[i].0)
+                            .inverse()
+                            .transpose()
+                            .to_cols_array_2d(),
+                    ),
                     color: match i {
                         0 => [1.0, 0.0, 0.0], // Red
                         1 => [0.0, 1.0, 0.0], // Green
@@ -213,12 +231,20 @@ impl State {
         //     })
         //     .collect();
 
-        let lights = [LightSource {
-            position: [0., 4., 0.],
-            _pad1: 0.,
-            color: [10., 4., 1.],
-            intensity: 10.,
-        }];
+        let lights = [
+            LightSource {
+                position: [0., 4., 0.],
+                _pad1: 0.,
+                color: [1., 1., 1.],
+                intensity: 10.,
+            },
+            // LightSource {
+            //     position: [0., 0., 0.],
+            //     _pad1: 0.,
+            //     color: [1., 1., 1.],
+            //     intensity: 10.,
+            // },
+        ];
 
         let light_count_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Light Count Uniform Buffer"),
@@ -349,6 +375,19 @@ impl State {
             multiview: None,
             cache: None,
         });
+
+        // let shader = device.create_shader_module(wgpu::include_wgsl!("../shaders/lighting.wgsl"));
+
+        // let compute_pipeline_layout =
+        //     device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        //         label: Some("Compute Pipeline Layout"),
+        //         bind_group_layouts: &[
+        //             &camera_bind_group_layout,
+        //             &model_bind_group_layout,
+        //             &light_bind_group_layout,
+        //         ],
+        //         push_constant_ranges: &[],
+        //     });
 
         let depth_texture = Self::create_depth_texture(&device, &config);
 

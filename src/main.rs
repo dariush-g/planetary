@@ -1,7 +1,8 @@
 pub mod app;
+pub mod camera;
+pub mod classes;
 pub mod mesh;
 pub mod state;
-pub mod camera;
 
 use winit::event_loop::EventLoop;
 

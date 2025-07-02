@@ -22,7 +22,11 @@ impl Vertex {
     }
 }
 
-pub fn generate_uv_sphere(lat_segments: u32, lon_segments: u32) -> (Vec<Vertex>, Vec<u32>) {
+pub fn generate_uv_sphere(
+    lat_segments: u32,
+    lon_segments: u32,
+    radius: f32,
+) -> (Vec<Vertex>, Vec<u32>) {
     let mut vertices = Vec::new();
     let mut indices = Vec::new();
 
@@ -41,7 +45,7 @@ pub fn generate_uv_sphere(lat_segments: u32, lon_segments: u32) -> (Vec<Vertex>,
             let nz = sin_phi * sin_theta;
 
             vertices.push(Vertex {
-                position: [nx, ny, nz],
+                position: [nx * radius, ny * radius, nz * radius],
                 normal: [nx, ny, nz], // same as position for a sphere
             });
         }
@@ -57,4 +61,9 @@ pub fn generate_uv_sphere(lat_segments: u32, lon_segments: u32) -> (Vec<Vertex>,
     }
 
     (vertices, indices)
+}
+
+pub struct SphereMesh {
+    pub vertices: Vec<Vertex>,
+    pub indices: Vec<u32>,
 }
