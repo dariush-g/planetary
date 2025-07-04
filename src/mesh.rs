@@ -45,7 +45,7 @@ pub fn generate_uv_sphere(
             let nz = sin_phi * sin_theta;
 
             vertices.push(Vertex {
-                position: [nx * radius, ny * radius, nz * radius],
+                position: [nx * radius, ny * radius * -1., nz * radius],
                 normal: [nx, ny, nz], // same as position for a sphere
             });
         }
@@ -63,7 +63,3 @@ pub fn generate_uv_sphere(
     (vertices, indices)
 }
 
-pub struct SphereMesh {
-    pub vertices: Vec<Vertex>,
-    pub indices: Vec<u32>,
-}

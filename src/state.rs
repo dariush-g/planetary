@@ -2,7 +2,7 @@ use crate::classes::CelestialBody;
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
 use rayon::iter::IntoParallelRefMutIterator;
-use std::{fmt, sync::Arc, time::*};
+use std::{fmt, num::NonZero, sync::Arc, time::*};
 use wgpu::{util::DeviceExt, *};
 use winit::{dpi::PhysicalSize, window::Window};
 
@@ -16,17 +16,19 @@ const MAX_SPHERES: usize = 100;
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable, Debug)]
 pub struct InstanceData {
-    model: ModelMatrix,
+    pub model: ModelMatrix,
     // normal_matrix: ModelMatrix,
-    color: [f32; 3],
+    pub radius: f32,
+    pub color: [f32; 3],
     _pad: f32,
 }
 
 impl InstanceData {
-    pub fn new(model: ModelMatrix, color: [f32; 3]) -> Self {
+    pub fn new(model: ModelMatrix, radius: f32, color: [f32; 3]) -> Self {
         Self {
             model,
             color,
+            radius,
             _pad: 0.0,
         }
     }
@@ -53,16 +55,7 @@ struct LightSource {
     intensity: f32,
 }
 
-struct TimerCallback(Box<dyn FnMut() + Send + 'static>);
-
-// Manually implement Debug since closures can't derive it
-impl fmt::Debug for TimerCallback {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "TimerCallback")
-    }
-}
-
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct State {
     surface: Arc<Surface<'static>>,
     pub device: Device,
@@ -85,10 +78,7 @@ pub struct State {
     lights: Vec<LightSource>,
     light_bind_group: BindGroup,
     light_buffer: Buffer,
-    start_time: Instant,
-    last_frame_time: Instant,
-    accumulated_time: Duration,
-    timers: Vec<(Duration, TimerCallback)>,
+
     pub bodies: Option<Vec<Box<dyn CelestialBody>>>,
     // g_buffer: GBufferTextures,
     // lighting_pipeline: ComputePipeline,
@@ -145,7 +135,7 @@ impl State {
 
         surface.configure(&device, &config);
 
-        let (vertices, indices) = generate_uv_sphere(128, 128, 2.);
+        let (vertices, indices) = generate_uv_sphere(128, 128, 1.);
 
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Vertex Buffer"),
@@ -212,32 +202,37 @@ impl State {
         });
 
         let matrices: Vec<ModelMatrix> = vec![
-            ModelMatrix(Mat4::from_translation(Vec3::new(0.0, 7.5, 0.0)).to_cols_array_2d()),
-            ModelMatrix(Mat4::from_translation(Vec3::new(3.0, 0.0, 0.0)).to_cols_array_2d()),
-            ModelMatrix(Mat4::from_translation(Vec3::new(-3.0, -1.0, 0.0)).to_cols_array_2d()),
+            ModelMatrix(Mat4::from_translation(Vec3::new(0.0, 0., 0.0)).to_cols_array_2d()),
+            // ModelMatrix(Mat4::from_translation(Vec3::new(3.0, 0.0, 0.0)).to_cols_array_2d()),
+            // ModelMatrix(Mat4::from_translation(Vec3::new(-3.0, -1.0, 0.0)).to_cols_array_2d()),
             // ModelMatrix(Mat4::from_translation(Vec3::new(0.0, 4.0, 0.0)).to_cols_array_2d()),
         ];
 
-        let model_matrices: Vec<InstanceData> = (0..matrices.len())
-            .map(|i| {
-                InstanceData {
-                    model: matrices[i],
-                    // normal_matrix: ModelMatrix(
-                    //     Mat4::from_cols_array_2d(&matrices[i].0)
-                    //         .inverse()
-                    //         .transpose()
-                    //         .to_cols_array_2d(),
-                    // ),
-                    color: match i {
-                        0 => [1.0, 0.0, 0.0], // Red
-                        1 => [0.0, 1.0, 0.0], // Green
-                        2 => [0.0, 0.0, 1.0], // Blue
-                        _ => [1.0, 1.0, 0.0], // Yellow (fallback)
-                    },
-                    _pad: 0.0,
-                }
-            })
-            .collect();
+        let mut model_matrices: Vec<InstanceData> = Vec::new();
+
+        if matrices.len() > 0 {
+            model_matrices = (0..matrices.len())
+                .map(|i| {
+                    InstanceData {
+                        model: matrices[i],
+                        // normal_matrix: ModelMatrix(
+                        //     Mat4::from_cols_array_2d(&matrices[i].0)
+                        //         .inverse()
+                        //         .transpose()
+                        //         .to_cols_array_2d(),
+                        // ),
+                        radius: 1.,
+                        color: match i {
+                            0 => [1.0, 1.0, 1.0],
+                            // 1 => [0.0, 1.0, 0.0], // Green
+                            // 2 => [0.0, 0.0, 1.0], // Blue
+                            _ => [1.0, 1.0, 0.0], // Yellow (fallback)
+                        },
+                        _pad: 0.0,
+                    }
+                })
+                .collect();
+        }
 
         // let model_matrices: Vec<ModelMatrix> = (0..30)
         //     .flat_map(|i| {
@@ -258,10 +253,10 @@ impl State {
 
         let lights = [
             LightSource {
-                position: [0., 4., 0.],
+                position: [0., 0., 0.],
                 _pad1: 0.,
-                color: [1., 1., 1.],
-                intensity: 10.,
+                color: [0., 0., 0.],
+                intensity: 0.,
             },
             // LightSource {
             //     position: [0., 0., 0.],
@@ -324,9 +319,11 @@ impl State {
             label: Some("Model Bind Group"),
         });
 
+        let x: &[u8] = bytemuck::cast_slice(&model_matrices);
+
         let model_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Model Matrices"),
-            contents: bytemuck::cast_slice(&model_matrices),
+            contents: &[0 as u8; 96],
             usage: wgpu::BufferUsages::STORAGE | BufferUsages::COPY_DST,
         });
 
@@ -438,36 +435,8 @@ impl State {
             lights: lights.to_vec(),
             light_bind_group,
             light_buffer,
-            start_time: Instant::now(),
-            last_frame_time: Instant::now(),
-            accumulated_time: Duration::ZERO,
-            timers: Vec::new(),
             bodies: None,
         }
-    }
-
-    pub fn add_timer(&mut self, delay_ms: u64, callback: impl FnMut() + Send + 'static) {
-        self.timers.push((
-            Duration::from_millis(delay_ms),
-            TimerCallback(Box::new(callback)),
-        ));
-    }
-
-    pub fn update_timers(&mut self) {
-        let now = Instant::now();
-        let delta = now - self.last_frame_time;
-        self.last_frame_time = now;
-        self.accumulated_time += delta;
-
-        self.timers.retain_mut(|(remaining, callback)| {
-            *remaining = remaining.saturating_sub(delta);
-            if remaining.is_zero() {
-                (callback.0)();
-                false
-            } else {
-                true
-            }
-        });
     }
 
     pub fn create_depth_texture(
@@ -517,9 +486,10 @@ impl State {
             );
         }
     }
-    pub fn add_model(&mut self, trans: Vec3, color: [f32; 3]) {
+    pub fn add_model(&mut self, trans: Vec3, radius: f32, color: [f32; 3]) {
         let model = ModelMatrix(Mat4::from_translation(trans).to_cols_array_2d());
-        self.model_matrices.push(InstanceData::new(model, color));
+        self.model_matrices
+            .push(InstanceData::new(model, radius, color));
 
         let buffer_size = self.model_matrices.len() * std::mem::size_of::<InstanceData>();
 
@@ -648,21 +618,6 @@ impl State {
             .write_buffer(&self.light_buffer, 0, bytemuck::cast_slice(&self.lights));
     }
 
-    pub fn update_model_position(&mut self, index: usize, new_position: Vec3) {
-        if index >= self.model_matrices.len() {
-            return; // Safety check
-        }
-
-        let new_model = Mat4::from_translation(new_position);
-        self.model_matrices[index].model = ModelMatrix(new_model.to_cols_array_2d());
-
-        self.queue.write_buffer(
-            &self.model_buffer,
-            0,
-            bytemuck::cast_slice(&self.model_matrices),
-        );
-    }
-
     pub fn update_n_model_positions(&mut self, updates: &[(usize, Vec3)]) {
         for (index, pos) in updates {
             if *index >= self.model_matrices.len() {
@@ -741,24 +696,37 @@ impl State {
         );
     }
 
-    pub fn apply_veloc(&mut self, bodies: &mut Vec<Box<dyn CelestialBody>>) {
-        let indices = bodies.len();
-        let bodies_clone = dyn_clone::clone(bodies);
+    pub fn apply_veloc(&mut self) {
+        if let Some(bodies) = &mut self.bodies {
+            let len = bodies.len();
 
-        for i in 0..indices {
-            let body_i = &mut bodies[i];
-            // F = G * M1 * M2 / |R||^2 ) * r (normalized)
-            //
-            for index in 0..indices {
-                let body_j = bodies_clone[index].clone();
-                if body_i.position() != body_j.position() {
-                    compute_force(body_i, &body_j);
+            for i in 0..len {
+                for j in (i + 1)..len {
+                    let (bi, bj) = {
+                        let (left, right) = bodies.split_at_mut(j);
+                        (&mut left[i], &mut right[0])
+                    };
+
+                    compute_force(bi, bj);
                 }
             }
         }
     }
 
-    pub fn update_body_positions(&mut self) {}
+    pub fn update_body_positions(&mut self) {
+        if let Some(mut bodies) = self.bodies.clone() {
+            let len = bodies.len();
+            let updates = &(0..len)
+                .map(|i| {
+                    (i, {
+                        bodies[i].update();
+                        bodies[i].position()
+                    })
+                })
+                .collect::<Vec<(usize, Vec3)>>();
+            self.update_n_model_positions(updates);
+        }
+    }
 }
 
 fn compute_force(

@@ -1,6 +1,9 @@
-use glam::Vec3;
+use glam::{Mat4, Vec3};
 
-use crate::{classes::CelestialBody, state::ModelMatrix};
+use crate::{
+    classes::CelestialBody,
+    state::{InstanceData, ModelMatrix},
+};
 
 #[derive(Clone, Debug)]
 pub struct Star {
@@ -12,7 +15,7 @@ pub struct Star {
     pub acceleration: Vec3,
     pub ty: StarType,
     pub position: Vec3,
-    pub model: ModelMatrix,
+    pub data: InstanceData,
 }
 
 impl CelestialBody for Star {
@@ -24,16 +27,8 @@ impl CelestialBody for Star {
         self.metric_info.mass
     }
 
-    fn model(&self) -> ModelMatrix {
-        self.model
-    }
-
-    fn color(&self) -> Vec3 {
-        self.properties.color
-    }
-
-    fn position(&self) -> Vec3 {
-        self.position
+    fn data(&self) -> crate::state::InstanceData {
+        self.data
     }
 
     fn axis(&self) -> Vec3 {
@@ -59,7 +54,13 @@ impl CelestialBody for Star {
     fn update(&mut self) {
         self.velocity += self.acceleration;
         self.position += self.velocity;
-        self.acceleration = Vec3::ZERO;
+        // self.acceleration = Vec3::ZERO;
+
+        self.data.model.0 = Mat4::from_translation(self.position).to_cols_array_2d();
+    }
+
+    fn position(&self) -> Vec3 {
+        self.position
     }
 }
 

@@ -1,6 +1,9 @@
-use glam::Vec3;
+use glam::{Mat4, Vec3};
 
-use crate::{classes::CelestialBody, state::ModelMatrix};
+use crate::{
+    classes::CelestialBody,
+    state::{InstanceData, ModelMatrix},
+};
 
 #[derive(Clone, Debug)]
 pub struct Planet {
@@ -12,8 +15,7 @@ pub struct Planet {
     pub acceleration: Vec3,
     pub angular_velocity: Vec3,
     pub rotation_axis: Vec3,
-    pub model: ModelMatrix,
-    pub color: Vec3,
+    pub data: InstanceData,
 }
 
 impl CelestialBody for Planet {
@@ -25,16 +27,12 @@ impl CelestialBody for Planet {
         self.metric_info.mass
     }
 
-    fn model(&self) -> ModelMatrix {
-        self.model
-    }
-
-    fn color(&self) -> Vec3 {
-        self.color
-    }
-
     fn position(&self) -> Vec3 {
         self.position
+    }
+
+    fn data(&self) -> InstanceData {
+        self.data
     }
 
     fn axis(&self) -> Vec3 {
@@ -60,7 +58,9 @@ impl CelestialBody for Planet {
     fn update(&mut self) {
         self.velocity += self.acceleration;
         self.position += self.velocity;
-        self.acceleration = Vec3::ZERO;
+        //self.acceleration = Vec3::ZERO;
+
+        self.data.model.0 = Mat4::from_translation(self.position).to_cols_array_2d();
     }
 }
 

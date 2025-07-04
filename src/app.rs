@@ -1,8 +1,4 @@
-use std::{
-    f32::consts::PI,
-    sync::Arc,
-    time::{Duration, SystemTime},
-};
+use std::sync::Arc;
 
 use glam::{Mat4, Vec2, Vec3};
 use winit::{
@@ -36,7 +32,7 @@ pub struct App {
 }
 
 impl App {
-    pub async fn new(bodies: Option<Vec<Box<dyn CelestialBody>>>) -> Self {
+    pub fn new(bodies: Option<Vec<Box<dyn CelestialBody>>>) -> Self {
         Self {
             state: None,
             bodies,
@@ -59,7 +55,16 @@ impl ApplicationHandler for App {
 
         state.bodies = self.bodies.clone();
 
-        self.state = Some(state.into());
+        self.state = Some(state.clone().into());
+
+        if let Some(state) = &mut self.state {
+            if let Some(bodies) = &self.bodies {
+                for body in bodies {
+                    state.add_model(body.position(), body.radius(), body.data().color);
+                }
+            }
+        }
+
         self.last_cursor = None;
         self.left_mouse_pressed = false;
         self.right_mouse_pressed = false;
@@ -85,13 +90,13 @@ impl ApplicationHandler for App {
                         state.camera.target = Vec3::ZERO;
                     }
                 }
-                PhysicalKey::Code(KeyCode::Space) => {
-                    if event.state == ElementState::Released {
-                        if let Some(state) = &mut self.state {
-                            state.add_model(Vec3::new(0., -1., 0.), [1., 1., 1.]);
-                        }
-                    }
-                }
+                // PhysicalKey::Code(KeyCode::Space) => {
+                //     if event.state == ElementState::Released {
+                //         if let Some(state) = &mut self.state {
+                //             state.add_model(Vec3::new(0., -5., 0.), 1., [1., 1., 1.]);
+                //         }
+                //     }
+                // }
                 _ => {}
             },
             WindowEvent::CursorMoved { position, .. } => {
@@ -165,6 +170,7 @@ impl ApplicationHandler for App {
                 if let Some(state) = &mut self.state {
                     state.update_camera();
                     state.update_body_positions();
+                    // state.apply_veloc();
                     state.render().unwrap();
                 }
                 self.window.clone().unwrap().request_redraw();

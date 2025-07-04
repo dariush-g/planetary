@@ -17,6 +17,7 @@ var<uniform> camera: Camera;
 struct InstanceData {
     model: mat4x4<f32>,
     // normal_matrix: mat4x4<f32>,
+    radius: f32,
     color: vec3<f32>,
     _pad: f32,
 }
@@ -47,7 +48,7 @@ fn vs_main(
     @builtin(instance_index) instance_idx: u32,
 ) -> VSOutput {
     let instance = model_matrices[instance_idx];
-    let pos = position * vec3(1., -1., 1.);
+    let pos = position * instance.radius; // * vec3(1., -1., 1.)
 
     let world_pos = instance.model * vec4(pos, 1.0);
 
