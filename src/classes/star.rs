@@ -6,6 +6,10 @@ use crate::{classes::CelestialBody, state::ModelMatrix};
 pub struct Star {
     pub metric_info: StarMetricInfo,
     pub properties: StarProperties,
+    pub velocity: Vec3,
+    pub angular_velocity: Vec3,
+    pub rotation_axis: Vec3,
+    pub acceleration: Vec3,
     pub ty: StarType,
     pub position: Vec3,
     pub model: ModelMatrix,
@@ -31,7 +35,34 @@ impl CelestialBody for Star {
     fn position(&self) -> Vec3 {
         self.position
     }
+
+    fn axis(&self) -> Vec3 {
+        self.rotation_axis
+    }
+
+    fn velocity(&self) -> Vec3 {
+        self.velocity
+    }
+
+    fn angular_velocity(&self) -> Vec3 {
+        self.angular_velocity
+    }
+
+    fn acceleration(&self) -> Vec3 {
+        self.acceleration
+    }
+
+    fn apply_force(&mut self, force: Vec3) {
+        self.acceleration += force;
+    }
+
+    fn update(&mut self) {
+        self.velocity += self.acceleration;
+        self.position += self.velocity;
+        self.acceleration = Vec3::ZERO;
+    }
 }
+
 #[derive(Clone, Debug)]
 pub struct StarMetricInfo {
     pub mass: f32,

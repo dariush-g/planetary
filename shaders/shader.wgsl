@@ -16,7 +16,7 @@ var<uniform> camera: Camera;
 
 struct InstanceData {
     model: mat4x4<f32>,
-    normal_matrix: mat4x4<f32>,
+    // normal_matrix: mat4x4<f32>,
     color: vec3<f32>,
     _pad: f32,
 }

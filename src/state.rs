@@ -1,7 +1,8 @@
-use std::sync::Arc;
-
+use crate::classes::CelestialBody;
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
+use rayon::iter::IntoParallelRefMutIterator;
+use std::{fmt, sync::Arc, time::*};
 use wgpu::{util::DeviceExt, *};
 use winit::{dpi::PhysicalSize, window::Window};
 
@@ -14,16 +15,26 @@ const MAX_SPHERES: usize = 100;
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable, Debug)]
-struct InstanceData {
+pub struct InstanceData {
     model: ModelMatrix,
-    normal_matrix: ModelMatrix,
+    // normal_matrix: ModelMatrix,
     color: [f32; 3],
     _pad: f32,
 }
 
+impl InstanceData {
+    pub fn new(model: ModelMatrix, color: [f32; 3]) -> Self {
+        Self {
+            model,
+            color,
+            _pad: 0.0,
+        }
+    }
+}
+
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable, Debug)]
-pub struct ModelMatrix([[f32; 4]; 4]);
+pub struct ModelMatrix(pub [[f32; 4]; 4]);
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -42,6 +53,15 @@ struct LightSource {
     intensity: f32,
 }
 
+struct TimerCallback(Box<dyn FnMut() + Send + 'static>);
+
+// Manually implement Debug since closures can't derive it
+impl fmt::Debug for TimerCallback {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "TimerCallback")
+    }
+}
+
 #[derive(Debug)]
 pub struct State {
     surface: Arc<Surface<'static>>,
@@ -55,16 +75,21 @@ pub struct State {
     index_count: u32,
     render_pipeline: RenderPipeline,
     camera_bind_group: BindGroup,
-    pub(crate) camera: Camera,
+    pub camera: Camera,
     camera_buffer: Buffer,
     pub orbit_camera: OrbitCamera,
-    model_matrices: Vec<InstanceData>,
+    pub model_matrices: Vec<InstanceData>,
     model_buffer: Buffer,
     model_bind_group: BindGroup,
     pub depth_texture: TextureView,
     lights: Vec<LightSource>,
     light_bind_group: BindGroup,
     light_buffer: Buffer,
+    start_time: Instant,
+    last_frame_time: Instant,
+    accumulated_time: Duration,
+    timers: Vec<(Duration, TimerCallback)>,
+    pub bodies: Option<Vec<Box<dyn CelestialBody>>>,
     // g_buffer: GBufferTextures,
     // lighting_pipeline: ComputePipeline,
     // lighting_bind_group: BindGroup,
@@ -197,12 +222,12 @@ impl State {
             .map(|i| {
                 InstanceData {
                     model: matrices[i],
-                    normal_matrix: ModelMatrix(
-                        Mat4::from_cols_array_2d(&matrices[i].0)
-                            .inverse()
-                            .transpose()
-                            .to_cols_array_2d(),
-                    ),
+                    // normal_matrix: ModelMatrix(
+                    //     Mat4::from_cols_array_2d(&matrices[i].0)
+                    //         .inverse()
+                    //         .transpose()
+                    //         .to_cols_array_2d(),
+                    // ),
                     color: match i {
                         0 => [1.0, 0.0, 0.0], // Red
                         1 => [0.0, 1.0, 0.0], // Green
@@ -413,7 +438,36 @@ impl State {
             lights: lights.to_vec(),
             light_bind_group,
             light_buffer,
+            start_time: Instant::now(),
+            last_frame_time: Instant::now(),
+            accumulated_time: Duration::ZERO,
+            timers: Vec::new(),
+            bodies: None,
         }
+    }
+
+    pub fn add_timer(&mut self, delay_ms: u64, callback: impl FnMut() + Send + 'static) {
+        self.timers.push((
+            Duration::from_millis(delay_ms),
+            TimerCallback(Box::new(callback)),
+        ));
+    }
+
+    pub fn update_timers(&mut self) {
+        let now = Instant::now();
+        let delta = now - self.last_frame_time;
+        self.last_frame_time = now;
+        self.accumulated_time += delta;
+
+        self.timers.retain_mut(|(remaining, callback)| {
+            *remaining = remaining.saturating_sub(delta);
+            if remaining.is_zero() {
+                (callback.0)();
+                false
+            } else {
+                true
+            }
+        });
     }
 
     pub fn create_depth_texture(
@@ -463,7 +517,56 @@ impl State {
             );
         }
     }
+    pub fn add_model(&mut self, trans: Vec3, color: [f32; 3]) {
+        let model = ModelMatrix(Mat4::from_translation(trans).to_cols_array_2d());
+        self.model_matrices.push(InstanceData::new(model, color));
 
+        let buffer_size = self.model_matrices.len() * std::mem::size_of::<InstanceData>();
+
+        if buffer_size as u64 > self.model_buffer.size() {
+            self.model_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Model Buffer"),
+                size: buffer_size as u64,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+
+            let model_bind_group_layout =
+                self.device
+                    .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                        label: Some("Model Bind Group Layout"),
+                        entries: &[wgpu::BindGroupLayoutEntry {
+                            binding: 0,
+                            visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Buffer {
+                                ty: wgpu::BufferBindingType::Storage { read_only: true },
+                                has_dynamic_offset: false,
+                                min_binding_size: None,
+                            },
+                            count: None,
+                        }],
+                    });
+
+            self.model_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                layout: &model_bind_group_layout,
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: self.model_buffer.as_entire_binding(),
+                }],
+                label: Some("Model Bind Group"),
+            });
+        }
+
+        // 5. Update buffer contents
+        self.queue.write_buffer(
+            &self.model_buffer,
+            0,
+            bytemuck::cast_slice(&self.model_matrices),
+        );
+
+        // 6. Make sure your render pipeline uses the correct instance count
+        // This would be used in your draw call later
+    }
     pub fn render(&mut self) -> Result<(), SurfaceError> {
         let frame = self.surface.get_current_texture()?;
         let view = frame.texture.create_view(&TextureViewDescriptor::default());
@@ -509,6 +612,7 @@ impl State {
             //for i in 0..self.model_matrices.len() as u32 {
             rpass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             rpass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+
             rpass.draw_indexed(0..self.index_count, 0, 0..self.model_matrices.len() as u32);
             //}
         }
@@ -535,7 +639,7 @@ impl State {
             }]),
         );
 
-        println!("camera eye: {:?}", self.camera.eye);
+        // println!("camera eye: {:?}", self.camera.eye);
     }
 
     pub fn update_lights(&mut self) {
@@ -543,4 +647,130 @@ impl State {
         self.queue
             .write_buffer(&self.light_buffer, 0, bytemuck::cast_slice(&self.lights));
     }
+
+    pub fn update_model_position(&mut self, index: usize, new_position: Vec3) {
+        if index >= self.model_matrices.len() {
+            return; // Safety check
+        }
+
+        let new_model = Mat4::from_translation(new_position);
+        self.model_matrices[index].model = ModelMatrix(new_model.to_cols_array_2d());
+
+        self.queue.write_buffer(
+            &self.model_buffer,
+            0,
+            bytemuck::cast_slice(&self.model_matrices),
+        );
+    }
+
+    pub fn update_n_model_positions(&mut self, updates: &[(usize, Vec3)]) {
+        for (index, pos) in updates {
+            if *index >= self.model_matrices.len() {
+                continue;
+            }
+
+            let new_model = Mat4::from_translation(*pos);
+            self.model_matrices[*index].model = ModelMatrix(new_model.to_cols_array_2d());
+        }
+
+        self.queue.write_buffer(
+            &self.model_buffer,
+            0,
+            bytemuck::cast_slice(&self.model_matrices),
+        );
+    }
+
+    pub fn animate_models(&mut self, delta_time: f32) {
+        let time = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs_f32();
+
+        for (i, instance) in self.model_matrices.iter_mut().enumerate() {
+            let offset = i as f32 * 3.0;
+            let new_pos = Vec3::new(offset + time.sin(), (time * 0.5).cos(), 0.0);
+
+            let new_model = Mat4::from_translation(new_pos);
+            instance.model = ModelMatrix(new_model.to_cols_array_2d());
+        }
+
+        self.queue.write_buffer(
+            &self.model_buffer,
+            0,
+            bytemuck::cast_slice(&self.model_matrices),
+        );
+    }
+
+    pub fn move_model_relative(&mut self, index: usize, offset: Vec3) {
+        if index >= self.model_matrices.len() {
+            return;
+        }
+
+        let current_model = Mat4::from_cols_array_2d(&self.model_matrices[index].model.0);
+        let current_translation = current_model.w_axis.truncate();
+
+        let new_translation = current_translation + offset;
+
+        let new_model = Mat4::from_translation(new_translation);
+
+        // 4. Update both matrices
+        self.model_matrices[index].model = ModelMatrix(new_model.to_cols_array_2d());
+
+        // 5. Single buffer update
+        self.queue.write_buffer(
+            &self.model_buffer,
+            0,
+            bytemuck::cast_slice(&self.model_matrices),
+        );
+    }
+
+    pub fn apply_matrix(&mut self, index: usize, mat: Mat4) {
+        if index >= self.model_matrices.len() {
+            return;
+        }
+
+        let current_model = Mat4::from_cols_array_2d(&self.model_matrices[index].model.0);
+        let new_model = mat * current_model; // Apply new transform first
+
+        self.model_matrices[index].model.0 = new_model.to_cols_array_2d();
+
+        self.queue.write_buffer(
+            &self.model_buffer,
+            0,
+            bytemuck::cast_slice(&self.model_matrices),
+        );
+    }
+
+    pub fn apply_veloc(&mut self, bodies: &mut Vec<Box<dyn CelestialBody>>) {
+        let indices = bodies.len();
+        let bodies_clone = dyn_clone::clone(bodies);
+
+        for i in 0..indices {
+            let body_i = &mut bodies[i];
+            // F = G * M1 * M2 / |R||^2 ) * r (normalized)
+            //
+            for index in 0..indices {
+                let body_j = bodies_clone[index].clone();
+                if body_i.position() != body_j.position() {
+                    compute_force(body_i, &body_j);
+                }
+            }
+        }
+    }
+
+    pub fn update_body_positions(&mut self) {}
+}
+
+fn compute_force(
+    body_i: &mut Box<dyn CelestialBody + 'static>,
+    body_j: &Box<dyn CelestialBody + 'static>,
+) {
+    let mut force = body_i.acceleration();
+
+    let r = body_i.position() - body_j.position();
+    let r_norm = r.length();
+
+    force += (body_i.mass() * body_j.mass() / (r * r)) * r_norm;
+
+    body_i.apply_force(force);
 }

@@ -1,6 +1,10 @@
-use std::sync::Arc;
+use std::{
+    f32::consts::PI,
+    sync::Arc,
+    time::{Duration, SystemTime},
+};
 
-use glam::{Vec2, Vec3};
+use glam::{Mat4, Vec2, Vec3};
 use winit::{
     application::ApplicationHandler,
     event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent},
@@ -12,22 +16,33 @@ use winit::{
 use crate::{
     camera::{Camera, OrbitCamera},
     classes::CelestialBody,
-    state::State,
+    state::{InstanceData, ModelMatrix, State},
 };
-pub struct CelestialBodies {
-    bodies: Vec<Box<dyn CelestialBody>>,
-}
+
+pub type CelestialBodies = Vec<Box<dyn CelestialBody>>;
 
 #[derive(Debug, Default)]
 pub struct App {
     window: Option<Arc<Window>>,
     state: Option<State>,
 
+    bodies: Option<CelestialBodies>,
+
     left_mouse_pressed: bool,
     right_mouse_pressed: bool,
 
     last_cursor: Option<Vec2>,
     //orbit_camera: OrbitCamera,
+}
+
+impl App {
+    pub async fn new(bodies: Option<Vec<Box<dyn CelestialBody>>>) -> Self {
+        Self {
+            state: None,
+            bodies,
+            ..Default::default()
+        }
+    }
 }
 
 impl ApplicationHandler for App {
@@ -40,7 +55,9 @@ impl ApplicationHandler for App {
 
         let cloned_window = self.window.clone().unwrap();
 
-        let state = pollster::block_on(State::new(cloned_window));
+        let mut state = pollster::block_on(State::new(cloned_window));
+
+        state.bodies = self.bodies.clone();
 
         self.state = Some(state.into());
         self.last_cursor = None;
@@ -66,6 +83,13 @@ impl ApplicationHandler for App {
                     if let Some(state) = &mut self.state {
                         state.orbit_camera = OrbitCamera::new();
                         state.camera.target = Vec3::ZERO;
+                    }
+                }
+                PhysicalKey::Code(KeyCode::Space) => {
+                    if event.state == ElementState::Released {
+                        if let Some(state) = &mut self.state {
+                            state.add_model(Vec3::new(0., -1., 0.), [1., 1., 1.]);
+                        }
                     }
                 }
                 _ => {}
@@ -140,6 +164,7 @@ impl ApplicationHandler for App {
             WindowEvent::RedrawRequested => {
                 if let Some(state) = &mut self.state {
                     state.update_camera();
+                    state.update_body_positions();
                     state.render().unwrap();
                 }
                 self.window.clone().unwrap().request_redraw();

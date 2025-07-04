@@ -7,6 +7,11 @@ pub struct Planet {
     pub metric_info: PlanetMetricInfo,
     pub ty: PlanetType,
     pub position: Vec3,
+    pub velocity: Vec3,
+    pub rotation: Vec3,
+    pub acceleration: Vec3,
+    pub angular_velocity: Vec3,
+    pub rotation_axis: Vec3,
     pub model: ModelMatrix,
     pub color: Vec3,
 }
@@ -30,6 +35,32 @@ impl CelestialBody for Planet {
 
     fn position(&self) -> Vec3 {
         self.position
+    }
+
+    fn axis(&self) -> Vec3 {
+        self.rotation_axis
+    }
+
+    fn velocity(&self) -> Vec3 {
+        self.velocity
+    }
+
+    fn angular_velocity(&self) -> Vec3 {
+        self.angular_velocity
+    }
+
+    fn acceleration(&self) -> Vec3 {
+        self.acceleration
+    }
+
+    fn apply_force(&mut self, force: Vec3) {
+        self.acceleration += force;
+    }
+
+    fn update(&mut self) {
+        self.velocity += self.acceleration;
+        self.position += self.velocity;
+        self.acceleration = Vec3::ZERO;
     }
 }
 
