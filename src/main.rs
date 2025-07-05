@@ -24,7 +24,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Box::new(Planet {
             metric_info: PlanetMetricInfo {
                 mass: 100.,
-                radius: 5.,
+                radius: 1.,
                 volume: 10.,
                 density: 10.,
             },
@@ -37,27 +37,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             rotation_axis: Vec3::Y,
             data: InstanceData::new(
                 ModelMatrix(Mat4::from_translation(Vec3::ZERO).to_cols_array_2d()),
-                5.,
-                [0., 1., 1.],
+                1.,
+                [1., 1., 1.],
             ),
         }),
         Box::new(Planet {
             metric_info: PlanetMetricInfo {
-                mass: 1000.,
-                radius: 5.,
+                mass: 10.,
+                radius: 1.,
                 volume: 10.,
                 density: 10.,
             },
             ty: classes::planet::PlanetType::Rocky,
-            position: Vec3::new(0., 10., 0.),
+            position: Vec3::new(0., 2., 0.),
             velocity: Vec3::new(0., 0., 0.),
             rotation: Vec3::ZERO,
             acceleration: Vec3::ZERO,
             angular_velocity: Vec3::ZERO,
             rotation_axis: Vec3::Y,
             data: InstanceData::new(
-                ModelMatrix(Mat4::from_translation(Vec3::new(0., 10., 0.)).to_cols_array_2d()),
-                5.,
+                ModelMatrix(Mat4::from_translation(Vec3::new(2., 0., 0.)).to_cols_array_2d()),
+                1.,
                 [0., 1., 1.],
             ),
         }),

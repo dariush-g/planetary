@@ -46,7 +46,7 @@ pub fn generate_uv_sphere(
 
             vertices.push(Vertex {
                 position: [nx * radius, ny * radius * -1., nz * radius],
-                normal: [nx, ny, nz], // same as position for a sphere
+                normal: [nx, ny * -1., nz], // same as position for a sphere
             });
         }
     }
@@ -62,4 +62,3 @@ pub fn generate_uv_sphere(
 
     (vertices, indices)
 }
-

@@ -17,7 +17,7 @@ const MAX_SPHERES: usize = 100;
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable, Debug)]
 pub struct InstanceData {
     pub model: ModelMatrix,
-    // normal_matrix: ModelMatrix,
+    pub normal_matrix: [[f32; 4]; 4],
     pub radius: f32,
     pub color: [f32; 3],
     _pad: f32,
@@ -27,6 +27,10 @@ impl InstanceData {
     pub fn new(model: ModelMatrix, radius: f32, color: [f32; 3]) -> Self {
         Self {
             model,
+            normal_matrix: Mat4::from_cols_array_2d(&model.0)
+                .inverse()
+                .transpose()
+                .to_cols_array_2d(),
             color,
             radius,
             _pad: 0.0,
@@ -202,7 +206,7 @@ impl State {
         });
 
         let matrices: Vec<ModelMatrix> = vec![
-            ModelMatrix(Mat4::from_translation(Vec3::new(0.0, 0., 0.0)).to_cols_array_2d()),
+            // ModelMatrix(Mat4::from_translation(Vec3::new(0.0, 0., 0.0)).to_cols_array_2d()),
             // ModelMatrix(Mat4::from_translation(Vec3::new(3.0, 0.0, 0.0)).to_cols_array_2d()),
             // ModelMatrix(Mat4::from_translation(Vec3::new(-3.0, -1.0, 0.0)).to_cols_array_2d()),
             // ModelMatrix(Mat4::from_translation(Vec3::new(0.0, 4.0, 0.0)).to_cols_array_2d()),
@@ -221,9 +225,13 @@ impl State {
                         //         .transpose()
                         //         .to_cols_array_2d(),
                         // ),
+                        normal_matrix: Mat4::from_cols_array_2d(&matrices[i].0)
+                            .inverse()
+                            .transpose()
+                            .to_cols_array_2d(),
                         radius: 1.,
                         color: match i {
-                            0 => [1.0, 1.0, 1.0],
+                            0 => [1.0, 0.0, 0.],
                             // 1 => [0.0, 1.0, 0.0], // Green
                             // 2 => [0.0, 0.0, 1.0], // Blue
                             _ => [1.0, 1.0, 0.0], // Yellow (fallback)
@@ -252,18 +260,18 @@ impl State {
         //     .collect();
 
         let lights = [
-            LightSource {
-                position: [0., 0., 0.],
-                _pad1: 0.,
-                color: [0., 0., 0.],
-                intensity: 0.,
-            },
             // LightSource {
-            //     position: [0., 0., 0.],
+            //     position: [0., 30., 0.],
             //     _pad1: 0.,
-            //     color: [1., 1., 1.],
-            //     intensity: 10.,
+            //     color: [10., 10., 10.],
+            //     intensity: 0.,
             // },
+            LightSource {
+                position: [0., 15., 0.],
+                _pad1: 0.,
+                color: [1., 1., 1.],
+                intensity: 100.,
+            },
         ];
 
         let light_count_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -319,11 +327,11 @@ impl State {
             label: Some("Model Bind Group"),
         });
 
-        let x: &[u8] = bytemuck::cast_slice(&model_matrices);
+        let _: &[u8] = bytemuck::cast_slice(&model_matrices);
 
         let model_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Model Matrices"),
-            contents: &[0 as u8; 96],
+            contents: &[0 as u8; 96], //&[0 as u8; 1],
             usage: wgpu::BufferUsages::STORAGE | BufferUsages::COPY_DST,
         });
 
@@ -486,6 +494,7 @@ impl State {
             );
         }
     }
+
     pub fn add_model(&mut self, trans: Vec3, radius: f32, color: [f32; 3]) {
         let model = ModelMatrix(Mat4::from_translation(trans).to_cols_array_2d());
         self.model_matrices
@@ -525,18 +534,15 @@ impl State {
                 }],
                 label: Some("Model Bind Group"),
             });
+
+            self.queue.write_buffer(
+                &self.model_buffer,
+                0,
+                bytemuck::cast_slice(&self.model_matrices),
+            );
         }
-
-        // 5. Update buffer contents
-        self.queue.write_buffer(
-            &self.model_buffer,
-            0,
-            bytemuck::cast_slice(&self.model_matrices),
-        );
-
-        // 6. Make sure your render pipeline uses the correct instance count
-        // This would be used in your draw call later
     }
+
     pub fn render(&mut self) -> Result<(), SurfaceError> {
         let frame = self.surface.get_current_texture()?;
         let view = frame.texture.create_view(&TextureViewDescriptor::default());
@@ -583,8 +589,9 @@ impl State {
             rpass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             rpass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
 
-            rpass.draw_indexed(0..self.index_count, 0, 0..self.model_matrices.len() as u32);
-            //}
+            if !self.model_matrices.is_empty() {
+                rpass.draw_indexed(0..self.index_count, 0, 0..self.model_matrices.len() as u32);
+            }
         }
 
         self.queue.submit(Some(encoder.finish()));
@@ -635,7 +642,7 @@ impl State {
         );
     }
 
-    pub fn animate_models(&mut self, delta_time: f32) {
+    pub fn animate_models(&mut self, _: f32) {
         let time = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()

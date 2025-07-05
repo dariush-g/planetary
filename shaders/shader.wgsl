@@ -16,7 +16,7 @@ var<uniform> camera: Camera;
 
 struct InstanceData {
     model: mat4x4<f32>,
-    // normal_matrix: mat4x4<f32>,
+    normal_matrix: mat4x4<f32>,
     radius: f32,
     color: vec3<f32>,
     _pad: f32,
@@ -52,9 +52,14 @@ fn vs_main(
 
     let world_pos = instance.model * vec4(pos, 1.0);
 
-    let normal1 = normal * vec3(1., -1., 1.);
+    // let world_normal = 
+    //normalize(
+        // (instance.normal_matrix * vec4f(normal, 0.0)).xyz;
+    //);
+    
+    // let normal1 = world_normal;
 
-    let world_normal = normalize((instance.model * vec4(normal1, 0.0)).xyz);
+    let world_normal = normalize((instance.model * vec4(normal, 0.0)).xyz);
 
     var out: VSOutput;
     out.clip_pos = camera.view_proj * world_pos;
@@ -106,6 +111,14 @@ fn fs_main(input: VSOutput) -> @location(0) vec4<f32> {
 
     // Gamma correction
     let gamma = 2.2;
-    let color = pow(total_light, vec3<f32>(1.0 / gamma));
+    var color = pow(total_light, vec3<f32>(1.0 / gamma));
+
+    // if color.r + color.g + color.b == 0. {
+    //     color.r = 1.;
+    //     color.b = 1.;
+    //     color.g = 1.;
+    // }
+
+
     return vec4(color, 1.0);
 }
