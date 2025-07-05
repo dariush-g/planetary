@@ -169,7 +169,7 @@ impl ApplicationHandler for App {
             WindowEvent::RedrawRequested => {
                 if let Some(state) = &mut self.state {
                     state.update_camera();
-                    // state.update_body_positions();
+                    state.update_body_positions();
                     // state.apply_veloc();
                     state.render().unwrap();
                 }

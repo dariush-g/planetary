@@ -50,7 +50,7 @@ fn vs_main(
     let instance = model_matrices[instance_idx];
     let pos = position * instance.radius; // * vec3(1., -1., 1.)
 
-    let world_pos = instance.model * vec4(pos, 1.0);
+    let world_pos = instance.normal_matrix * vec4(pos, 1.0);
 
     // let world_normal = 
     //normalize(
@@ -59,7 +59,7 @@ fn vs_main(
     
     // let normal1 = world_normal;
 
-    let world_normal = normalize((instance.model * vec4(normal, 0.0)).xyz);
+    let world_normal = (instance.normal_matrix * vec4(normal, 0.0)).xyz;
 
     var out: VSOutput;
     out.clip_pos = camera.view_proj * world_pos;

@@ -206,9 +206,9 @@ impl State {
         });
 
         let matrices: Vec<ModelMatrix> = vec![
-            // ModelMatrix(Mat4::from_translation(Vec3::new(0.0, 0., 0.0)).to_cols_array_2d()),
-            // ModelMatrix(Mat4::from_translation(Vec3::new(3.0, 0.0, 0.0)).to_cols_array_2d()),
-            // ModelMatrix(Mat4::from_translation(Vec3::new(-3.0, -1.0, 0.0)).to_cols_array_2d()),
+            ModelMatrix(Mat4::from_translation(Vec3::new(0.0, 0., 0.0)).to_cols_array_2d()),
+            ModelMatrix(Mat4::from_translation(Vec3::new(3.0, 0.0, 0.0)).to_cols_array_2d()),
+            ModelMatrix(Mat4::from_translation(Vec3::new(-3.0, -1.0, 0.0)).to_cols_array_2d()),
             // ModelMatrix(Mat4::from_translation(Vec3::new(0.0, 4.0, 0.0)).to_cols_array_2d()),
         ];
 
@@ -725,10 +725,8 @@ impl State {
             let len = bodies.len();
             let updates = &(0..len)
                 .map(|i| {
-                    (i, {
-                        bodies[i].update();
-                        bodies[i].position()
-                    })
+                    bodies[i].update();
+                    (i, bodies[i].position())
                 })
                 .collect::<Vec<(usize, Vec3)>>();
             self.update_n_model_positions(updates);
