@@ -1,7 +1,7 @@
 use dyn_clone::DynClone;
 use glam::Vec3;
 
-use crate::state::{InstanceData, ModelMatrix};
+use crate::state::InstanceData;
 
 pub mod planet;
 pub mod star;

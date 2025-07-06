@@ -51,19 +51,19 @@ impl ApplicationHandler for App {
 
         let cloned_window = self.window.clone().unwrap();
 
-        let mut state = pollster::block_on(State::new(cloned_window));
+        let mut state = pollster::block_on(State::new(cloned_window, self.bodies.clone()));
 
         state.bodies = self.bodies.clone();
 
         self.state = Some(state.clone().into());
 
-        if let Some(state) = &mut self.state {
-            if let Some(bodies) = &self.bodies {
-                for body in bodies {
-                    state.add_model(body.position(), body.radius(), body.data().color);
-                }
-            }
-        }
+        // if let Some(state) = &mut self.state {
+        //     if let Some(bodies) = &self.bodies {
+        //         for body in bodies {
+        //             state.add_model(body.position(), body.radius(), body.data().color);
+        //         }
+        //     }
+        // }
 
         self.last_cursor = None;
         self.left_mouse_pressed = false;
@@ -169,7 +169,9 @@ impl ApplicationHandler for App {
             WindowEvent::RedrawRequested => {
                 if let Some(state) = &mut self.state {
                     state.update_camera();
-                    state.update_body_positions();
+                    // state.update_body_positions();
+                    state.update_lights();
+                    state.update_time();
                     // state.apply_veloc();
                     state.render().unwrap();
                 }

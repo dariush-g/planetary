@@ -1,12 +1,12 @@
 struct Camera {
     view_proj: mat4x4<f32>,
     camera_position: vec3<f32>,
-    _pad: f32,
+    // _pad: f32,
 };
 
 struct Light {
     position: vec3<f32>,
-    _pad1: f32,
+    // _pad1: f32,
     color: vec3<f32>,
     intensity: f32,
 };
@@ -16,16 +16,12 @@ var<uniform> camera: Camera;
 
 struct InstanceData {
     model: mat4x4<f32>,
-    normal_matrix: mat4x4<f32>,
     radius: f32,
     color: vec3<f32>,
-    _pad: f32,
 }
 
 @group(1) @binding(0)
 var<storage, read> model_matrices: array<InstanceData>;
-
-
 
 @group(2) @binding(0)
 var<storage, read> lights: array<Light>;
@@ -48,9 +44,9 @@ fn vs_main(
     @builtin(instance_index) instance_idx: u32,
 ) -> VSOutput {
     let instance = model_matrices[instance_idx];
-    let pos = position * instance.radius; // * vec3(1., -1., 1.)
+    let pos = position * instance.radius * vec3(1., -1., 1.);
 
-    let world_pos = instance.normal_matrix * vec4(pos, 1.0);
+    let world_pos = instance.model * vec4(pos, 1.0);
 
     // let world_normal = 
     //normalize(
@@ -59,20 +55,22 @@ fn vs_main(
     
     // let normal1 = world_normal;
 
-    let world_normal = (instance.normal_matrix * vec4(normal, 0.0)).xyz;
+    let world_normal = normalize(instance.model * vec4(normal, 0.0)).xyz; // * vec3(0., -1., 0.);
 
     var out: VSOutput;
     out.clip_pos = camera.view_proj * world_pos;
     out.normal = world_normal;
-    out.world_pos = world_pos.xyz;
-    out.color = instance.color;  // Pass through the instance color
+    out.world_pos = normalize(world_pos).xyz;
+    // let col = vec3<f32>(1.0, 1.0, 0.);
+    out.color = instance.color; // instance.color;  // Pass through the instance color
     return out;
 }
 
 @fragment
 fn fs_main(input: VSOutput) -> @location(0) vec4<f32> {
+   
     // Normalize inputs
-    let normal = normalize(input.normal);
+    let normal = normalize(input.normal) * vec3(1., -1., 1.);
     let view_dir = normalize(camera.camera_position - input.world_pos);
     
     // Material properties
@@ -113,12 +111,12 @@ fn fs_main(input: VSOutput) -> @location(0) vec4<f32> {
     let gamma = 2.2;
     var color = pow(total_light, vec3<f32>(1.0 / gamma));
 
-    // if color.r + color.g + color.b == 0. {
-    //     color.r = 1.;
-    //     color.b = 1.;
-    //     color.g = 1.;
-    // }
-
+    if color.r + color.g + color.b == 0. {
+        color.r = 1.;
+        color.b = 1.;
+        color.g = 0.;
+    }
 
     return vec4(color, 1.0);
+    // return vec4<f32>(input.color, 1.0);
 }

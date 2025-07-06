@@ -36,7 +36,7 @@ pub fn generate_uv_sphere(
         let cos_theta = theta.cos();
 
         for x in 0..=lon_segments {
-            let phi = 2.0 * std::f32::consts::PI * (x as f32) / (lon_segments as f32);
+            let phi = 2. * std::f32::consts::PI * (x as f32) / (lon_segments as f32);
             let sin_phi = phi.sin();
             let cos_phi = phi.cos();
 
@@ -45,8 +45,8 @@ pub fn generate_uv_sphere(
             let nz = sin_phi * sin_theta;
 
             vertices.push(Vertex {
-                position: [nx * radius, ny * radius * -1., nz * radius],
-                normal: [nx, ny * -1., nz], // same as position for a sphere
+                position: [nx * radius, ny * radius, nz * radius],
+                normal: [nx, ny, nz], // same as position for a sphere
             });
         }
     }

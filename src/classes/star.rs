@@ -54,9 +54,10 @@ impl CelestialBody for Star {
     fn update(&mut self) {
         self.velocity += self.acceleration;
         self.position += self.velocity;
-        // self.acceleration = Vec3::ZERO;
+        self.acceleration = Vec3::ZERO;
 
-        self.data.model.0 = Mat4::from_translation(self.position).to_cols_array_2d();
+        let new_model = Mat4::from_translation(self.position);
+        self.data = InstanceData::new(new_model, self.radius(), self.data.color);
     }
 
     fn position(&self) -> Vec3 {
