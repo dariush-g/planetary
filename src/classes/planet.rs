@@ -16,9 +16,14 @@ pub struct Planet {
     pub angular_velocity: Vec3,
     pub rotation_axis: Vec3,
     pub data: InstanceData,
+    pub accumulated_force: Vec3,
 }
 
 impl CelestialBody for Planet {
+    fn add_force(&mut self, force: Vec3) {
+        self.accumulated_force += force;
+    }
+
     fn radius(&self) -> f32 {
         self.metric_info.radius
     }
@@ -49,6 +54,10 @@ impl CelestialBody for Planet {
 
     fn acceleration(&self) -> Vec3 {
         self.acceleration
+    }
+
+    fn reset_forces(&mut self) {
+        self.accumulated_force = Vec3::ZERO;
     }
 
     fn apply_force(&mut self, force: Vec3) {

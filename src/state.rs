@@ -109,11 +109,7 @@ impl State {
     pub async fn new(window: Arc<Window>, bodies: Option<CelestialBodies>) -> Self {
         let size = window.inner_size();
 
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::all(),
-            flags: wgpu::InstanceFlags::all(),
-            backend_options: BackendOptions::default(),
-        });
+        let instance = wgpu::Instance::default();
 
         let surface = Arc::new(instance.create_surface(window).unwrap());
 
@@ -179,7 +175,7 @@ impl State {
             aspect: config.width as f32 / config.height as f32,
             fovy: 45.0_f32.to_radians(),
             znear: 0.1,
-            zfar: 10_000.0,
+            zfar: 10_000_000.0,
         };
 
         let camera_uniform = CameraUniform {
@@ -262,10 +258,40 @@ impl State {
             //     intensity: 0.,
             // },
             LightSource {
-                position: [0., 10., 10.],
+                position: [0., 50., 0.],
                 _pad1: 0.,
                 color: [1., 1., 1.],
-                intensity: 100.,
+                intensity: 1000.,
+            },
+            LightSource {
+                position: [50., 0., 0.],
+                _pad1: 0.,
+                color: [1., 1., 1.],
+                intensity: 1000.,
+            },
+            LightSource {
+                position: [0., -50., 0.],
+                _pad1: 0.,
+                color: [1., 1., 1.],
+                intensity: 1000.,
+            },
+            LightSource {
+                position: [-50., 0., 0.],
+                _pad1: 0.,
+                color: [1., 1., 1.],
+                intensity: 1000.,
+            },
+            LightSource {
+                position: [0., 0., 50.],
+                _pad1: 0.,
+                color: [1., 1., 1.],
+                intensity: 1000.,
+            },
+            LightSource {
+                position: [0., 0., -50.],
+                _pad1: 0.,
+                color: [1., 1., 1.],
+                intensity: 1000.,
             },
         ];
 
@@ -467,10 +493,19 @@ impl State {
 
         self.time_accumulator += frame_time;
 
-        if self.time_accumulator.as_millis() > 10 {
-            self.time_accumulator = Duration::ZERO;
+        // Use a loop for fixed time steps to ensure consistent physics updates
+        while self.time_accumulator >= self.fixed_dt {
+            // 1. Calculate all forces for the current state
+            self.apply_veloc();
+
+            // 2. Update bodies (position, velocity) based on the calculated forces
             self.update_body_positions();
+
+            self.time_accumulator -= self.fixed_dt;
         }
+
+        // Camera update can happen once per visual frame, not tied to fixed physics steps
+        self.update_camera();
     }
 
     // pub fn update_physics(&mut self, dt: f32) {
@@ -504,8 +539,9 @@ impl State {
 
     pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
         if new_size.width > 0 && new_size.height > 0 {
-            self.config.width = new_size.width;
-            self.config.height = new_size.height;
+            self.config.width = new_size.width.min(2048);
+            self.config.height = new_size.height.min(2048);
+
             self.surface.configure(&self.device, &self.config);
 
             self.depth_texture = Self::create_depth_texture(&self.device, &self.config);
@@ -737,16 +773,16 @@ impl State {
         if let Some(bodies) = &mut self.bodies {
             let len = bodies.len();
 
-            // for i in 0..len {
-            //     for j in (i + 1)..len {
-            //         let (bi, bj) = {
-            //             let (left, right) = bodies.split_at_mut(j);
-            //             (&mut left[i], &mut right[0])
-            //         };
+            for i in 0..len {
+                for j in (i + 1)..len {
+                    let (bi, bj) = {
+                        let (left, right) = bodies.split_at_mut(j);
+                        (&mut left[i], &mut right[0])
+                    };
 
-            //         compute_force(bi, bj);
-            //     }
-            // }
+                    compute_force(bi, bj);
+                }
+            }
         }
     }
 
@@ -769,16 +805,43 @@ impl State {
     }
 }
 
-fn compute_force(
-    body_i: &mut Box<dyn CelestialBody + 'static>,
-    body_j: &Box<dyn CelestialBody + 'static>,
-) {
-    let mut force = body_i.acceleration();
+pub fn compute_force(body_i: &mut Box<dyn CelestialBody>, body_j: &mut Box<dyn CelestialBody>) {
+    const G: f64 = 6.67430e-11; // Gravitational constant
 
-    let r = body_i.position() - body_j.position();
-    let r_norm = r.length();
+    let r_vec = body_j.position() - body_i.position(); // Vector from body_i to body_j
+    let r_mag_sq = r_vec.length_squared(); // Squared magnitude
 
-    force += (body_i.mass() * body_j.mass() / (r * r)) * r_norm;
+    // --- CORRECTION HERE ---
+    // Use the 'radius' field from InstanceData for collision approximation
+    // If radius represents the visual size, use it for proximity checks.
+    // If radius is purely for rendering, and the "physical" radius is elsewhere
+    // (e.g., in PlanetMetricInfo), use that instead.
+    let radius_i = body_i.data().radius;
+    let radius_j = body_j.data().radius;
+    let min_distance_sq = (radius_i + radius_j).powi(2) * 0.1; // Example: 10% of sum of radii squared
 
-    body_i.apply_force(force);
+    if r_mag_sq < min_distance_sq {
+        // Bodies are too close, possibly colliding or very near.
+        // For now, no force is applied to prevent extreme values.
+        return;
+    }
+
+    // let r_mag = r_mag_sq.sqrt(); // Magnitude (distance)
+
+    // Calculate the magnitude of the gravitational force
+    let force_magnitude: f64 = G * body_i.mass() as f64 * body_j.mass() as f64 / r_mag_sq as f64;
+
+    // Calculate the unit vector in the direction of the force
+    let force_direction = r_vec.normalize(); // Unit vector r_hat
+
+    // Force on body_i due to body_j (attractive)
+    let force_on_i = force_direction * force_magnitude as f32; // Cast force_magnitude to f32
+
+    // Force on body_j due to body_i (equal and opposite)
+    let force_on_j = -force_direction * force_magnitude as f32; // Cast force_magnitude to f32
+
+    // Accumulate the forces
+
+    body_i.apply_force(force_on_i);
+    body_j.apply_force(force_on_j);
 }

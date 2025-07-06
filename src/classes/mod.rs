@@ -17,6 +17,8 @@ pub trait CelestialBody: DynClone + std::fmt::Debug {
     fn apply_force(&mut self, force: Vec3);
     fn update(&mut self);
     fn position(&self) -> Vec3;
+    fn reset_forces(&mut self);
+    fn add_force(&mut self, force: Vec3);
 }
 
 dyn_clone::clone_trait_object!(CelestialBody);

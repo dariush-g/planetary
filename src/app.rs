@@ -90,6 +90,14 @@ impl ApplicationHandler for App {
                         state.camera.target = Vec3::ZERO;
                     }
                 }
+                PhysicalKey::Code(KeyCode::Digit1) => {
+                    if let Some(state) = &mut self.state {
+                        state.orbit_camera = OrbitCamera::new();
+                        state
+                            .orbit_camera
+                            .set_target(self.bodies.clone().unwrap()[0].position());
+                    }
+                }
                 // PhysicalKey::Code(KeyCode::Space) => {
                 //     if event.state == ElementState::Released {
                 //         if let Some(state) = &mut self.state {

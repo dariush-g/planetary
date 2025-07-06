@@ -26,7 +26,7 @@ impl Camera {
         let world_up = up * (delta.y * speed);
 
         self.eye += world_right + world_up;
-        self.target += world_right + world_up;
+        self.target += world_right + world_up / self.eye.dot(self.target);
     }
 }
 #[derive(Clone, Debug, Default)]
@@ -85,10 +85,10 @@ impl OrbitCamera {
         Self {
             theta: 0.0,
             phi: std::f32::consts::FRAC_PI_2,
-            radius: 5.0,
+            radius: 400.0,
             target: Vec3::ZERO,
-            sensitivity: 0.005,
-            zoom_speed: 1.0,
+            sensitivity: 0.010,
+            zoom_speed: 10.0,
             last_operation: None,
         }
     }
@@ -139,7 +139,11 @@ impl OrbitCamera {
         let zoom_amount = delta * self.zoom_speed;
         self.radius -= zoom_amount;
 
-        self.radius = self.radius.clamp(1., 100.);
+        self.radius = self.radius.clamp(1., 1000_000.);
         println!("{}", self.radius);
+    }
+
+    pub fn set_target(&mut self, targ: Vec3) {
+        self.target = targ;
     }
 }

@@ -16,6 +16,8 @@ pub struct Star {
     pub ty: StarType,
     pub position: Vec3,
     pub data: InstanceData,
+
+    pub accumulated_force: Vec3,
 }
 
 impl CelestialBody for Star {
@@ -52,8 +54,8 @@ impl CelestialBody for Star {
     }
 
     fn update(&mut self) {
-        self.velocity += self.acceleration;
-        self.position += self.velocity;
+        // self.velocity += self.acceleration;
+        // self.position += self.velocity;
         self.acceleration = Vec3::ZERO;
 
         let new_model = Mat4::from_translation(self.position);
@@ -62,6 +64,14 @@ impl CelestialBody for Star {
 
     fn position(&self) -> Vec3 {
         self.position
+    }
+
+    fn reset_forces(&mut self) {
+        self.accumulated_force = Vec3::ZERO;
+    }
+
+    fn add_force(&mut self, force: Vec3) {
+        self.accumulated_force += force;
     }
 }
 

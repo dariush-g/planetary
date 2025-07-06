@@ -1,24 +1,10 @@
-pub mod animation;
-pub mod app;
-pub mod camera;
-pub mod classes;
-pub mod mesh;
-pub mod oct;
-pub mod state;
-
-use env_logger::Logger;
 use glam::{Mat4, Vec3};
-use winit::event_loop::EventLoop;
-
-use crate::{
+use planetary::{
     app::App,
-    classes::{
-        planet::{Planet, PlanetMetricInfo},
-        star::{Star, StarMetricInfo, StarProperties},
-        CelestialBody,
-    },
-    state::{InstanceData, ModelMatrix},
+    classes::{planet::*, star::*, *},
+    state::*,
 };
+use winit::event_loop::EventLoop;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let event_loop = EventLoop::new()?;
@@ -31,7 +17,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 volume: 10.,
                 density: 10.,
             },
-            ty: classes::planet::PlanetType::Rocky,
+            ty: PlanetType::Rocky,
             position: Vec3::new(0., 0., 450.),
             velocity: Vec3::new(3., 0., 1.),
             rotation: Vec3::ZERO,
@@ -52,7 +38,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 volume: 10.,
                 density: 10.,
             },
-            ty: classes::planet::PlanetType::Rocky,
+            ty: PlanetType::Rocky,
             position: Vec3::new(350., 0., 0.),
             velocity: Vec3::new(0., 0.5, 1.),
             rotation: Vec3::ZERO,
@@ -82,7 +68,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             angular_velocity: Vec3::ZERO,
             rotation_axis: Vec3::Y,
             acceleration: Vec3::ZERO,
-            ty: classes::star::StarType::A,
+            ty: StarType::A,
             position: Vec3::ZERO,
             data: InstanceData::new(Mat4::from_translation(Vec3::ZERO), 10., [1., 0., 0.]),
             accumulated_force: Vec3::ZERO,
