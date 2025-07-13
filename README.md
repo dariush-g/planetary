@@ -4,4 +4,4 @@ This project is a very basic real-time 3D planetary simulation and visualization
 It models celestial bodies interacting through gravity, rendering them as spheres with lighting and camera controls.
 
 
-![Example Photo](./Downloads/planetss2.png)
+![Example Photo](/examples/planetss2.png)
