@@ -1,5 +1,11 @@
 use glam::Vec3;
 
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//
+//  not yet implemented octree
+//
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 #[derive(Clone, Debug)]
 pub struct OctreeNode {
     center: Vec3,

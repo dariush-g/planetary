@@ -806,41 +806,28 @@ impl State {
 }
 
 pub fn compute_force(body_i: &mut Box<dyn CelestialBody>, body_j: &mut Box<dyn CelestialBody>) {
-    const G: f64 = 6.67430e-11; // Gravitational constant
+    const G: f64 = 6.67430e-11;
 
-    let r_vec = body_j.position() - body_i.position(); // Vector from body_i to body_j
-    let r_mag_sq = r_vec.length_squared(); // Squared magnitude
+    let r_vec = body_j.position() - body_i.position();
+    let r_mag_sq = r_vec.length_squared();
 
-    // --- CORRECTION HERE ---
-    // Use the 'radius' field from InstanceData for collision approximation
-    // If radius represents the visual size, use it for proximity checks.
-    // If radius is purely for rendering, and the "physical" radius is elsewhere
-    // (e.g., in PlanetMetricInfo), use that instead.
     let radius_i = body_i.data().radius;
     let radius_j = body_j.data().radius;
-    let min_distance_sq = (radius_i + radius_j).powi(2) * 0.1; // Example: 10% of sum of radii squared
+    let min_distance_sq = (radius_i + radius_j).powi(2) * 0.1;
 
     if r_mag_sq < min_distance_sq {
-        // Bodies are too close, possibly colliding or very near.
-        // For now, no force is applied to prevent extreme values.
         return;
     }
 
-    // let r_mag = r_mag_sq.sqrt(); // Magnitude (distance)
+    // let r_mag = r_mag_sq.sqrt();
 
-    // Calculate the magnitude of the gravitational force
     let force_magnitude: f64 = G * body_i.mass() as f64 * body_j.mass() as f64 / r_mag_sq as f64;
 
-    // Calculate the unit vector in the direction of the force
-    let force_direction = r_vec.normalize(); // Unit vector r_hat
+    let force_direction = r_vec.normalize();
 
-    // Force on body_i due to body_j (attractive)
-    let force_on_i = force_direction * force_magnitude as f32; // Cast force_magnitude to f32
+    let force_on_i = force_direction * force_magnitude as f32;
 
-    // Force on body_j due to body_i (equal and opposite)
-    let force_on_j = -force_direction * force_magnitude as f32; // Cast force_magnitude to f32
-
-    // Accumulate the forces
+    let force_on_j = -force_direction * force_magnitude as f32;
 
     body_i.apply_force(force_on_i);
     body_j.apply_force(force_on_j);
